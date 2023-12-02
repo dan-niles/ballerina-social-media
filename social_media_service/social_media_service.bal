@@ -1,10 +1,17 @@
 import ballerina/http;
+import ballerina/sql;
 import ballerina/time;
+import ballerinax/mysql;
+import ballerinax/mysql.driver as _;
 
 type User record {|
     readonly int id;
     string name;
+
+    @sql:Column {name: "birth_date"}
     time:Date birthDate;
+
+    @sql:Column {name: "mobile_number"}
     string mobileNumber;
 |};
 
@@ -29,16 +36,20 @@ type UserNotFound record {|
     ErrorDetails body;
 |};
 
+mysql:Client socialMediaDb = check new ("localhost", "root", "Root@232Mysql", "social_media_database", 3306);
+
 service /social\-media on new http:Listener(9090) {
     // [GET] social-media/users
     resource function get users() returns User[]|error {
-        return users.toArray();
+        stream<User, sql:Error?> userStream = socialMediaDb->query(`SELECT * FROM users`);
+        return from var user in userStream
+            select user;
     }
 
     // [GET] social-media/users/[id]
     resource function get users/[int id]() returns User|UserNotFound|error {
-        User? user = users[id];
-        if user is () {
+        User|sql:Error user = socialMediaDb->queryRow(`SELECT * FROM users WHERE id = ${id}`);
+        if user is sql:NoRowsError {
             UserNotFound userNotFound = {body: {message: string `id: ${id}`, details: string `user/${id}`, timeStamp: time:utcNow()}};
             return userNotFound;
         }
@@ -47,7 +58,7 @@ service /social\-media on new http:Listener(9090) {
 
     // [POST] social-media/users
     resource function post users(NewUser newUser) returns http:Created|error {
-        users.add({id: users.length() + 1, ...newUser});
+        _ = check socialMediaDb->execute(`INSERT INTO users(birth_date, name, mobile_number) VALUES (${newUser.birthDate}, ${newUser.name}, ${newUser.mobileNumber});`);
         return http:CREATED;
     }
 }
