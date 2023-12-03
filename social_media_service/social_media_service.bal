@@ -58,7 +58,18 @@ service /social\-media on new http:Listener(9090) {
 
     // [POST] social-media/users
     resource function post users(NewUser newUser) returns http:Created|error {
-        _ = check socialMediaDb->execute(`INSERT INTO users(birth_date, name, mobile_number) VALUES (${newUser.birthDate}, ${newUser.name}, ${newUser.mobileNumber});`);
+        transaction {
+            _ = check socialMediaDb->execute(`
+            INSERT INTO users(birth_date, name, mobile_number) 
+            VALUES (${newUser.birthDate}, ${newUser.name}, ${newUser.mobileNumber});`);
+
+            _ = check socialMediaDb->execute(`
+            INSERT INTO followers(birth_date, name, mobile_number) 
+            VALUES (${newUser.birthDate}, ${newUser.name}, ${newUser.mobileNumber});`);
+
+            check commit;
+        }
+
         return http:CREATED;
     }
 }
