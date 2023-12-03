@@ -36,17 +36,33 @@ type UserNotFound record {|
     ErrorDetails body;
 |};
 
-mysql:Client socialMediaDb = check new ("localhost", "root", "Root@232Mysql", "social_media_database", 3306);
+type DatabaseConfig record {|
+    string host;
+    string user;
+    string password;
+    string database;
+    int port;
+|};
+
+configurable DatabaseConfig databaseConfig = ?;
+
+mysql:Client socialMediaDb = check new (...databaseConfig);
 
 service /social\-media on new http:Listener(9090) {
-    // [GET] social-media/users
+
+    # Get all the users
+    #
+    # + return - The list of users or error message
     resource function get users() returns User[]|error {
         stream<User, sql:Error?> userStream = socialMediaDb->query(`SELECT * FROM users`);
         return from var user in userStream
             select user;
     }
 
-    // [GET] social-media/users/[id]
+    # Get a specific user
+    #
+    # + id - The user ID of the user to be retrived
+    # + return - A specific user or error message
     resource function get users/[int id]() returns User|UserNotFound|error {
         User|sql:Error user = socialMediaDb->queryRow(`SELECT * FROM users WHERE id = ${id}`);
         if user is sql:NoRowsError {
@@ -56,20 +72,14 @@ service /social\-media on new http:Listener(9090) {
         return user;
     }
 
-    // [POST] social-media/users
+    # Create a new user
+    #
+    # + newUser - The user details of the new user
+    # + return - The created message or error message
     resource function post users(NewUser newUser) returns http:Created|error {
-        transaction {
-            _ = check socialMediaDb->execute(`
-            INSERT INTO users(birth_date, name, mobile_number) 
+        _ = check socialMediaDb->execute(`
+            INSERT INTO users(birth_date, name, mobile_number)
             VALUES (${newUser.birthDate}, ${newUser.name}, ${newUser.mobileNumber});`);
-
-            _ = check socialMediaDb->execute(`
-            INSERT INTO followers(birth_date, name, mobile_number) 
-            VALUES (${newUser.birthDate}, ${newUser.name}, ${newUser.mobileNumber});`);
-
-            check commit;
-        }
-
         return http:CREATED;
     }
 }
